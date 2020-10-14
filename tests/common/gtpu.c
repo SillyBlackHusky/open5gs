@@ -97,9 +97,8 @@ void test_gtpu_close(ogs_socknode_t *node)
 #include <netinet/icmp6.h>
 #endif
 
-int test_gtpu_send(
-        ogs_socknode_t *node, test_bearer_t *bearer,
-        ogs_pkbuf_t *pkbuf, uint16_t gtp_hlen, int flags)
+int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
+        uint8_t type, uint16_t gtp_hlen, int flags, ogs_pkbuf_t *pkbuf)
 {
     ssize_t sent;
 
@@ -290,7 +289,8 @@ int test_gtpu_send_ping(
         ogs_assert_if_reached();
     }
 
-    return test_gtpu_send(node, bearer, pkbuf, gtp_hlen, 0);
+    return test_gtpu_send(node, bearer,
+            OGS_GTPU_MSGTYPE_GPDU, gtp_hlen, 0, pkbuf);
 }
 
 int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
@@ -332,5 +332,30 @@ int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
     OGS_HEX(payload, strlen(payload), tmp);
     memcpy(ip_h, tmp, 48);
 
-    return test_gtpu_send(node, bearer, pkbuf, gtp_hlen, OGS_GTPU_FLAGS_S);
+    return test_gtpu_send(node, bearer,
+            OGS_GTPU_MSGTYPE_GPDU, gtp_hlen, OGS_GTPU_FLAGS_S, pkbuf);
+}
+
+int test_gtpu_send_err_ind(ogs_socknode_t *node, test_bearer_t *bearer)
+{
+    ogs_pkbuf_t *pkbuf = NULL;
+
+    uint16_t gtp_hlen = 0;
+    uint8_t ext_hlen = 0;
+
+    ogs_assert(bearer);
+
+    pkbuf = ogs_gtp_build_err_ind();
+
+    if (bearer->qfi) {
+        ext_hlen = 1;
+
+        gtp_hlen = 52 + OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4;
+
+    } else {
+        gtp_hlen = 52;
+    }
+
+    return test_gtpu_send(node, bearer,
+            OGS_GTPU_MSGTYPE_ERR_IND, gtp_hlen, OGS_GTPU_FLAGS_S, pkbuf);
 }
