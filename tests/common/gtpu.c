@@ -97,38 +97,60 @@ void test_gtpu_close(ogs_socknode_t *node)
 #include <netinet/icmp6.h>
 #endif
 
-int test_gtpu_send_ping(
-        ogs_socknode_t *node, test_bearer_t *bearer, const char *dst_ip)
+int test_gtpu_send(ogs_socknode_t *node,
+        test_bearer_t *bearer, ogs_pkbuf_t *pkbuf, uint16_t gtp_hlen)
 {
-    int rv;
     ssize_t sent;
 
     test_sess_t *sess = NULL;
     ogs_sockaddr_t upf;
 
-    ogs_pkbuf_t *pkbuf = NULL;
     ogs_gtp_header_t *gtp_h = NULL;
     ogs_gtp_extension_header_t *ext_h = NULL;
-    ogs_ipsubnet_t dst_ipsub;
 
-    uint16_t gtp_hlen = 0;
+    ogs_assert(pkbuf);
+    ogs_assert(gtp_hlen);
 
     ogs_assert(bearer);
     sess = bearer->sess;
     ogs_assert(sess);
-    ogs_assert(dst_ip);
-
-    rv = ogs_ipsubnet(&dst_ipsub, dst_ip, NULL);
-    ogs_assert(rv == OGS_OK);
 
     memset(&upf, 0, sizeof(ogs_sockaddr_t));
     upf.ogs_sin_port = htobe16(OGS_GTPV1_U_UDP_PORT);
 
-    pkbuf = ogs_pkbuf_alloc(
-            NULL, 200 /* enough for ICMP; use smaller buffer */);
-    ogs_assert(pkbuf);
-    ogs_pkbuf_put(pkbuf, 200);
-    memset(pkbuf->data, 0, pkbuf->len);
+    gtp_h = (ogs_gtp_header_t *)pkbuf->data;
+    if (bearer->qfi) {
+        /* 5G Core */
+        gtp_h->flags = 0x34;
+        gtp_h->teid = htobe32(sess->upf_n3_teid);
+
+        if (sess->upf_n3_ip.ipv4) {
+            upf.ogs_sa_family = AF_INET;
+            upf.sin.sin_addr.s_addr = sess->upf_n3_ip.addr;
+        } else {
+            ogs_fatal("Not implemented");
+            ogs_assert_if_reached();
+        }
+
+    } else if (bearer->ebi) {
+        /* EPC */
+        gtp_h->flags = 0x30;
+        gtp_h->teid = htobe32(bearer->sgw_s1u_teid);
+
+        if (bearer->sgw_s1u_ip.ipv4) {
+            upf.ogs_sa_family = AF_INET;
+            upf.sin.sin_addr.s_addr = bearer->sgw_s1u_ip.addr;
+        } else {
+            ogs_fatal("Not implemented");
+            ogs_assert_if_reached();
+        }
+    } else {
+        ogs_fatal("No QFI[%d] and EBI[%d]", bearer->qfi, bearer->ebi);
+        ogs_assert_if_reached();
+    }
+
+    gtp_h->type = OGS_GTPU_MSGTYPE_GPDU;
+    gtp_h->length = htobe16(gtp_hlen);
 
     if (bearer->qfi) {
         ext_h = (ogs_gtp_extension_header_t *)
@@ -142,17 +164,60 @@ int test_gtpu_send_ping(
             OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
     }
 
+    ogs_assert(node);
+    ogs_assert(node->sock);
+
+    sent = ogs_sendto(node->sock->fd, pkbuf->data, pkbuf->len, 0, &upf);
+    ogs_pkbuf_free(pkbuf);
+    if (sent < 0 || sent != pkbuf->len)
+        return OGS_ERROR;
+
+    return OGS_OK;
+}
+
+int test_gtpu_send_ping(
+        ogs_socknode_t *node, test_bearer_t *bearer, const char *dst_ip)
+{
+    int rv;
+    ssize_t sent;
+
+    test_sess_t *sess = NULL;
+
+    ogs_pkbuf_t *pkbuf = NULL;
+    ogs_ipsubnet_t dst_ipsub;
+
+    uint16_t gtp_hlen = 0;
+    uint8_t ext_hlen = 0;
+
+    ogs_assert(bearer);
+    sess = bearer->sess;
+    ogs_assert(sess);
+    ogs_assert(dst_ip);
+
+    rv = ogs_ipsubnet(&dst_ipsub, dst_ip, NULL);
+    ogs_assert(rv == OGS_OK);
+
+    pkbuf = ogs_pkbuf_alloc(
+            NULL, 200 /* enough for ICMP; use smaller buffer */);
+    ogs_assert(pkbuf);
+    ogs_pkbuf_put(pkbuf, 200);
+    memset(pkbuf->data, 0, pkbuf->len);
+
+    if (bearer->qfi) {
+        ext_hlen = 1;
+    }
+
     if (dst_ipsub.family == AF_INET) {
         struct ip *ip_h = NULL;
         struct icmp *icmp_h = NULL;
 
         if (bearer->qfi) {
             gtp_hlen = sizeof *ip_h + ICMP_MINLEN +
-                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4;
+                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4;
 
             ip_h = (struct ip *)(pkbuf->data +
                     OGS_GTPV1U_HEADER_LEN +
-                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4);
+                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4);
             icmp_h = (struct icmp *)((uint8_t *)ip_h + sizeof *ip_h);
         } else {
             gtp_hlen = sizeof *ip_h + ICMP_MINLEN;
@@ -187,9 +252,9 @@ int test_gtpu_send_ping(
 
         if (bearer->qfi) {
             gtp_hlen = sizeof *ip6_h + sizeof *icmp6_h +
-                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4;
+                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4;
             p = (uint8_t *)pkbuf->data + OGS_GTPV1U_HEADER_LEN +
-                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4;
+                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4;
         } else {
             gtp_hlen = sizeof *ip6_h + sizeof *icmp6_h;
             p = (uint8_t *)pkbuf->data + OGS_GTPV1U_HEADER_LEN;
@@ -226,49 +291,7 @@ int test_gtpu_send_ping(
         ogs_assert_if_reached();
     }
 
-    gtp_h = (ogs_gtp_header_t *)pkbuf->data;
-    if (bearer->qfi) {
-        /* 5G Core */
-        gtp_h->flags = 0x34;
-        gtp_h->teid = htobe32(sess->upf_n3_teid);
-
-        if (sess->upf_n3_ip.ipv4) {
-            upf.ogs_sa_family = AF_INET;
-            upf.sin.sin_addr.s_addr = sess->upf_n3_ip.addr;
-        } else {
-            ogs_fatal("Not implemented");
-            ogs_assert_if_reached();
-        }
-
-    } else if (bearer->ebi) {
-        /* EPC */
-        gtp_h->flags = 0x30;
-        gtp_h->teid = htobe32(bearer->sgw_s1u_teid);
-
-        if (bearer->sgw_s1u_ip.ipv4) {
-            upf.ogs_sa_family = AF_INET;
-            upf.sin.sin_addr.s_addr = bearer->sgw_s1u_ip.addr;
-        } else {
-            ogs_fatal("Not implemented");
-            ogs_assert_if_reached();
-        }
-    } else {
-        ogs_fatal("No QFI[%d] and EBI[%d]", bearer->qfi, bearer->ebi);
-        ogs_assert_if_reached();
-    }
-
-    gtp_h->type = OGS_GTPU_MSGTYPE_GPDU;
-    gtp_h->length = htobe16(gtp_hlen);
-
-    ogs_assert(node);
-    ogs_assert(node->sock);
-
-    sent = ogs_sendto(node->sock->fd, pkbuf->data, pkbuf->len, 0, &upf);
-    ogs_pkbuf_free(pkbuf);
-    if (sent < 0 || sent != pkbuf->len)
-        return OGS_ERROR;
-
-    return OGS_OK;
+    return test_gtpu_send(node, bearer, pkbuf, gtp_hlen);
 }
 
 int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
