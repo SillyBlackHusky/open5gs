@@ -111,6 +111,8 @@ int test_gtpu_send_ping(
     ogs_gtp_extension_header_t *ext_h = NULL;
     ogs_ipsubnet_t dst_ipsub;
 
+    uint16_t gtp_hlen = 0;
+
     ogs_assert(bearer);
     sess = bearer->sess;
     ogs_assert(sess);
@@ -127,6 +129,102 @@ int test_gtpu_send_ping(
     ogs_assert(pkbuf);
     ogs_pkbuf_put(pkbuf, 200);
     memset(pkbuf->data, 0, pkbuf->len);
+
+    if (bearer->qfi) {
+        ext_h = (ogs_gtp_extension_header_t *)
+            (pkbuf->data + OGS_GTPV1U_HEADER_LEN);
+        ext_h->type = OGS_GTP_EXTENSION_HEADER_TYPE_PDU_SESSION_CONTAINER;
+        ext_h->len = 1;
+        ext_h->pdu_type =
+            OGS_GTP_EXTENSION_HEADER_PDU_TYPE_UL_PDU_SESSION_INFORMATION;
+        ext_h->qos_flow_identifier = bearer->qfi;
+        ext_h->next_type =
+            OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
+    }
+
+    if (dst_ipsub.family == AF_INET) {
+        struct ip *ip_h = NULL;
+        struct icmp *icmp_h = NULL;
+
+        if (bearer->qfi) {
+            gtp_hlen = sizeof *ip_h + ICMP_MINLEN +
+                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4;
+
+            ip_h = (struct ip *)(pkbuf->data +
+                    OGS_GTPV1U_HEADER_LEN +
+                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4);
+            icmp_h = (struct icmp *)((uint8_t *)ip_h + sizeof *ip_h);
+        } else {
+            gtp_hlen = sizeof *ip_h + ICMP_MINLEN;
+
+            ip_h = (struct ip *)(pkbuf->data + OGS_GTPV1U_HEADER_LEN);
+            icmp_h = (struct icmp *)((uint8_t *)ip_h + sizeof *ip_h);
+        }
+
+        ip_h->ip_v = 4;
+        ip_h->ip_hl = 5;
+        ip_h->ip_tos = 0;
+        ip_h->ip_id = rand();
+        ip_h->ip_off = 0;
+        ip_h->ip_ttl = 255;
+        ip_h->ip_p = IPPROTO_ICMP;
+        ip_h->ip_len = htobe16(sizeof *ip_h + ICMP_MINLEN);
+        ip_h->ip_src.s_addr = sess->ue_ip.addr;
+        ip_h->ip_dst.s_addr = dst_ipsub.sub[0];
+        ip_h->ip_sum = ogs_in_cksum((uint16_t *)ip_h, sizeof *ip_h);
+
+        icmp_h->icmp_type = 8;
+        icmp_h->icmp_seq = rand();
+        icmp_h->icmp_id = rand();
+        icmp_h->icmp_cksum = ogs_in_cksum((uint16_t *)icmp_h, ICMP_MINLEN);
+
+    } else if (dst_ipsub.family == AF_INET6) {
+        struct ip6_hdr *ip6_h = NULL;
+        struct icmp6_hdr *icmp6_h = NULL;
+        uint16_t plen = 0;
+        uint8_t nxt = 0;
+        uint8_t *p = NULL;
+
+        if (bearer->qfi) {
+            gtp_hlen = sizeof *ip6_h + sizeof *icmp6_h +
+                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4;
+            p = (uint8_t *)pkbuf->data + OGS_GTPV1U_HEADER_LEN +
+                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4;
+        } else {
+            gtp_hlen = sizeof *ip6_h + sizeof *icmp6_h;
+            p = (uint8_t *)pkbuf->data + OGS_GTPV1U_HEADER_LEN;
+        }
+        plen =  htobe16(sizeof *icmp6_h);
+        nxt = IPPROTO_ICMPV6;
+
+        ip6_h = (struct ip6_hdr *)p;
+        icmp6_h = (struct icmp6_hdr *)((uint8_t *)ip6_h + sizeof *ip6_h);
+
+        memcpy(p, sess->ue_ip.addr6, sizeof sess->ue_ip.addr6);
+        p += sizeof sess->ue_ip.addr6;
+        memcpy(p, dst_ipsub.sub, sizeof dst_ipsub.sub);
+        p += sizeof dst_ipsub.sub;
+        p += 2; memcpy(p, &plen, 2); p += 2;
+        p += 3; *p = nxt; p += 1;
+
+        icmp6_h->icmp6_type = ICMP6_ECHO_REQUEST;
+        icmp6_h->icmp6_seq = rand();
+        icmp6_h->icmp6_id = rand();
+
+        icmp6_h->icmp6_cksum = ogs_in_cksum(
+                (uint16_t *)ip6_h, sizeof *ip6_h + sizeof *icmp6_h);
+
+        ip6_h->ip6_flow = htobe32(0x60000001);
+        ip6_h->ip6_plen = plen;
+        ip6_h->ip6_nxt = nxt;;
+        ip6_h->ip6_hlim = 0xff;
+        memcpy(ip6_h->ip6_src.s6_addr,
+                sess->ue_ip.addr6, sizeof sess->ue_ip.addr6);
+        memcpy(ip6_h->ip6_dst.s6_addr, dst_ipsub.sub, sizeof dst_ipsub.sub);
+    } else {
+        ogs_fatal("Invalid family[%d]", dst_ipsub.family);
+        ogs_assert_if_reached();
+    }
 
     gtp_h = (ogs_gtp_header_t *)pkbuf->data;
     if (bearer->qfi) {
@@ -160,103 +258,7 @@ int test_gtpu_send_ping(
     }
 
     gtp_h->type = OGS_GTPU_MSGTYPE_GPDU;
-
-    if (bearer->qfi) {
-        ext_h = (ogs_gtp_extension_header_t *)
-            (pkbuf->data + OGS_GTPV1U_HEADER_LEN);
-        ext_h->type = OGS_GTP_EXTENSION_HEADER_TYPE_PDU_SESSION_CONTAINER;
-        ext_h->len = 1;
-        ext_h->pdu_type =
-            OGS_GTP_EXTENSION_HEADER_PDU_TYPE_UL_PDU_SESSION_INFORMATION;
-        ext_h->qos_flow_identifier = bearer->qfi;
-        ext_h->next_type =
-            OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
-    }
-
-    if (dst_ipsub.family == AF_INET) {
-        struct ip *ip_h = NULL;
-        struct icmp *icmp_h = NULL;
-
-        if (bearer->qfi) {
-            gtp_h->length = htobe16(
-                    sizeof *ip_h + ICMP_MINLEN +
-                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4);
-
-            ip_h = (struct ip *)(pkbuf->data +
-                    OGS_GTPV1U_HEADER_LEN +
-                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4);
-            icmp_h = (struct icmp *)((uint8_t *)ip_h + sizeof *ip_h);
-        } else {
-            gtp_h->length = htobe16(sizeof *ip_h + ICMP_MINLEN);
-
-            ip_h = (struct ip *)(pkbuf->data + OGS_GTPV1U_HEADER_LEN);
-            icmp_h = (struct icmp *)((uint8_t *)ip_h + sizeof *ip_h);
-        }
-
-        ip_h->ip_v = 4;
-        ip_h->ip_hl = 5;
-        ip_h->ip_tos = 0;
-        ip_h->ip_id = rand();
-        ip_h->ip_off = 0;
-        ip_h->ip_ttl = 255;
-        ip_h->ip_p = IPPROTO_ICMP;
-        ip_h->ip_len = htobe16(sizeof *ip_h + ICMP_MINLEN);
-        ip_h->ip_src.s_addr = sess->ue_ip.addr;
-        ip_h->ip_dst.s_addr = dst_ipsub.sub[0];
-        ip_h->ip_sum = ogs_in_cksum((uint16_t *)ip_h, sizeof *ip_h);
-
-        icmp_h->icmp_type = 8;
-        icmp_h->icmp_seq = rand();
-        icmp_h->icmp_id = rand();
-        icmp_h->icmp_cksum = ogs_in_cksum((uint16_t *)icmp_h, ICMP_MINLEN);
-
-    } else if (dst_ipsub.family == AF_INET6) {
-        struct ip6_hdr *ip6_h = NULL;
-        struct icmp6_hdr *icmp6_h = NULL;
-        uint16_t plen = 0;
-        uint8_t nxt = 0;
-        uint8_t *p = NULL;
-
-        if (bearer->qfi) {
-            gtp_h->length = htobe16(sizeof *ip6_h + sizeof *icmp6_h +
-                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4);
-            p = (uint8_t *)pkbuf->data + OGS_GTPV1U_HEADER_LEN +
-                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4;
-        } else {
-            gtp_h->length = htobe16(sizeof *ip6_h + sizeof *icmp6_h);
-            p = (uint8_t *)pkbuf->data + OGS_GTPV1U_HEADER_LEN;
-        }
-        plen =  htobe16(sizeof *icmp6_h);
-        nxt = IPPROTO_ICMPV6;
-
-        ip6_h = (struct ip6_hdr *)p;
-        icmp6_h = (struct icmp6_hdr *)((uint8_t *)ip6_h + sizeof *ip6_h);
-
-        memcpy(p, sess->ue_ip.addr6, sizeof sess->ue_ip.addr6);
-        p += sizeof sess->ue_ip.addr6;
-        memcpy(p, dst_ipsub.sub, sizeof dst_ipsub.sub);
-        p += sizeof dst_ipsub.sub;
-        p += 2; memcpy(p, &plen, 2); p += 2;
-        p += 3; *p = nxt; p += 1;
-
-        icmp6_h->icmp6_type = ICMP6_ECHO_REQUEST;
-        icmp6_h->icmp6_seq = rand();
-        icmp6_h->icmp6_id = rand();
-
-        icmp6_h->icmp6_cksum = ogs_in_cksum(
-                (uint16_t *)ip6_h, sizeof *ip6_h + sizeof *icmp6_h);
-
-        ip6_h->ip6_flow = htonl(0x60000001);
-        ip6_h->ip6_plen = plen;
-        ip6_h->ip6_nxt = nxt;;
-        ip6_h->ip6_hlim = 0xff;
-        memcpy(ip6_h->ip6_src.s6_addr,
-                sess->ue_ip.addr6, sizeof sess->ue_ip.addr6);
-        memcpy(ip6_h->ip6_dst.s6_addr, dst_ipsub.sub, sizeof dst_ipsub.sub);
-    } else {
-        ogs_fatal("Invalid family[%d]", dst_ipsub.family);
-        ogs_assert_if_reached();
-    }
+    gtp_h->length = htobe16(gtp_hlen);
 
     ogs_assert(node);
     ogs_assert(node->sock);
