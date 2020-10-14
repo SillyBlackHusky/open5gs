@@ -98,9 +98,10 @@ void test_gtpu_close(ogs_socknode_t *node)
 #endif
 
 int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
-        uint8_t type, uint16_t gtp_hlen, int flags, ogs_pkbuf_t *pkbuf)
+        uint8_t type, int flags, ogs_pkbuf_t *pkbuf)
 {
     ssize_t sent;
+    uint8_t ext_hlen = 0;
 
     test_sess_t *sess = NULL;
     ogs_sockaddr_t upf;
@@ -109,7 +110,6 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
     ogs_gtp_extension_header_t *ext_h = NULL;
 
     ogs_assert(pkbuf);
-    ogs_assert(gtp_hlen);
 
     ogs_assert(bearer);
     sess = bearer->sess;
@@ -119,10 +119,26 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
     upf.ogs_sin_port = htobe16(OGS_GTPV1_U_UDP_PORT);
 
     gtp_h = (ogs_gtp_header_t *)pkbuf->data;
+
+    gtp_h->type = type;
+    gtp_h->length = htobe16(pkbuf->len - OGS_GTPV1U_HEADER_LEN);
+
     if (bearer->qfi) {
+        ext_hlen = 1;
+
         /* 5G Core */
-        gtp_h->flags = 0x34 | flags;
+        gtp_h->flags = (OGS_GTPU_FLAGS_E | flags);
         gtp_h->teid = htobe32(sess->upf_n3_teid);
+
+        ext_h = (ogs_gtp_extension_header_t *)
+            (pkbuf->data + OGS_GTPV1U_HEADER_LEN);
+        ext_h->type = OGS_GTP_EXTENSION_HEADER_TYPE_PDU_SESSION_CONTAINER;
+        ext_h->len = ext_hlen;
+        ext_h->pdu_type =
+            OGS_GTP_EXTENSION_HEADER_PDU_TYPE_UL_PDU_SESSION_INFORMATION;
+        ext_h->qos_flow_identifier = bearer->qfi;
+        ext_h->next_type =
+            OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
 
         if (sess->upf_n3_ip.ipv4) {
             upf.ogs_sa_family = AF_INET;
@@ -134,7 +150,7 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
 
     } else if (bearer->ebi) {
         /* EPC */
-        gtp_h->flags = 0x30 | flags;
+        gtp_h->flags = OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT | flags;
         gtp_h->teid = htobe32(bearer->sgw_s1u_teid);
 
         if (bearer->sgw_s1u_ip.ipv4) {
@@ -147,21 +163,6 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
     } else {
         ogs_fatal("No QFI[%d] and EBI[%d]", bearer->qfi, bearer->ebi);
         ogs_assert_if_reached();
-    }
-
-    gtp_h->type = OGS_GTPU_MSGTYPE_GPDU;
-    gtp_h->length = htobe16(gtp_hlen);
-
-    if (bearer->qfi) {
-        ext_h = (ogs_gtp_extension_header_t *)
-            (pkbuf->data + OGS_GTPV1U_HEADER_LEN);
-        ext_h->type = OGS_GTP_EXTENSION_HEADER_TYPE_PDU_SESSION_CONTAINER;
-        ext_h->len = 1;
-        ext_h->pdu_type =
-            OGS_GTP_EXTENSION_HEADER_PDU_TYPE_UL_PDU_SESSION_INFORMATION;
-        ext_h->qos_flow_identifier = bearer->qfi;
-        ext_h->next_type =
-            OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
     }
 
     ogs_assert(node);
@@ -201,9 +202,7 @@ int test_gtpu_send_ping(
     ogs_pkbuf_put(pkbuf, 200);
     memset(pkbuf->data, 0, pkbuf->len);
 
-    if (bearer->qfi) {
-        ext_hlen = 1;
-    }
+    if (bearer->qfi) ext_hlen = 1;
 
     if (dst_ipsub.family == AF_INET) {
         struct ip *ip_h = NULL;
@@ -289,8 +288,11 @@ int test_gtpu_send_ping(
         ogs_assert_if_reached();
     }
 
+    ogs_pkbuf_trim(pkbuf, gtp_hlen + OGS_GTPV1U_HEADER_LEN);
+
     return test_gtpu_send(node, bearer,
-            OGS_GTPU_MSGTYPE_GPDU, gtp_hlen, 0, pkbuf);
+            OGS_GTPU_MSGTYPE_GPDU,
+            OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT, pkbuf);
 }
 
 int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
@@ -315,9 +317,9 @@ int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
     ogs_pkbuf_put(pkbuf, 200);
     memset(pkbuf->data, 0, pkbuf->len);
 
-    if (bearer->qfi) {
-        ext_hlen = 1;
+    if (bearer->qfi) ext_hlen = 1;
 
+    if (bearer->qfi) {
         gtp_hlen = 52 + OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4;
 
         ip_h = (pkbuf->data +
@@ -332,8 +334,11 @@ int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
     OGS_HEX(payload, strlen(payload), tmp);
     memcpy(ip_h, tmp, 48);
 
+    ogs_pkbuf_trim(pkbuf, gtp_hlen + OGS_GTPV1U_HEADER_LEN);
+
     return test_gtpu_send(node, bearer,
-            OGS_GTPU_MSGTYPE_GPDU, gtp_hlen, OGS_GTPU_FLAGS_S, pkbuf);
+            OGS_GTPU_MSGTYPE_GPDU,
+            OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT | OGS_GTPU_FLAGS_S, pkbuf);
 }
 
 int test_gtpu_send_err_ind(ogs_socknode_t *node, test_bearer_t *bearer)
@@ -347,15 +352,17 @@ int test_gtpu_send_err_ind(ogs_socknode_t *node, test_bearer_t *bearer)
 
     pkbuf = ogs_gtp_build_err_ind();
 
+    if (bearer->qfi) ext_hlen = 1;
+
     if (bearer->qfi) {
-        ext_hlen = 1;
-
-        gtp_hlen = 52 + OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4;
-
+        gtp_hlen = OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4;
     } else {
-        gtp_hlen = 52;
+        gtp_hlen = 0;
     }
 
+    ogs_pkbuf_trim(pkbuf, gtp_hlen + OGS_GTPV1U_HEADER_LEN);
+
     return test_gtpu_send(node, bearer,
-            OGS_GTPU_MSGTYPE_ERR_IND, gtp_hlen, OGS_GTPU_FLAGS_S, pkbuf);
+            OGS_GTPU_MSGTYPE_ERR_IND,
+            OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT | OGS_GTPU_FLAGS_S, pkbuf);
 }
