@@ -218,8 +218,8 @@ int test_gtpu_send_ping(
         uint8_t *p = NULL;
 
         if (bearer->qfi) {
-            gtp_h->length = htobe16(sizeof *ip6_h + sizeof *icmp6_h) +
-                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4;
+            gtp_h->length = htobe16(sizeof *ip6_h + sizeof *icmp6_h +
+                    OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4);
             p = (uint8_t *)pkbuf->data + OGS_GTPV1U_HEADER_LEN +
                     OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_h->len * 4;
         } else {
