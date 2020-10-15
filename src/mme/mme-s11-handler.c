@@ -100,30 +100,13 @@ void mme_s11_handle_create_session_response(
         cause_value = OGS_GTP_CAUSE_MANDATORY_IE_MISSING;
     }
 
-    /* CHECK PDN_TYPE */
-    if (rsp->pdn_address_allocation.presence) {
-        ogs_paa_t paa;
+    if (cause_value != OGS_GTP_CAUSE_REQUEST_ACCEPTED)
+        ogs_warn("Cause[%d] : No Accepted", cause_value);
 
-        memcpy(&paa, rsp->pdn_address_allocation.data,
-                ogs_min(sizeof(paa), rsp->pdn_address_allocation.len));
-        if (paa.pdn_type == OGS_GTP_PDN_TYPE_IPV4) {
-            /* Nothing */
-        } else if (paa.pdn_type == OGS_GTP_PDN_TYPE_IPV6) {
-            /* Nothing */
-        } else if (paa.pdn_type == OGS_GTP_PDN_TYPE_IPV4V6) {
-            /* Nothing */
-        } else {
-            ogs_error("Unknown PDN Type %u", paa.pdn_type);
-            cause_value = OGS_GTP_CAUSE_MANDATORY_IE_INCORRECT;
-        }
-
-    } else {
+    if (rsp->pdn_address_allocation.presence == 0) {
         ogs_error("No PDN Address Allocation");
         cause_value = OGS_GTP_CAUSE_MANDATORY_IE_MISSING;
     }
-
-    if (cause_value != OGS_GTP_CAUSE_REQUEST_ACCEPTED)
-        ogs_warn("Cause[%d] : No Accepted", cause_value);
 
     if (rsp->sender_f_teid_for_control_plane.presence == 0) {
         ogs_error("No S11 TEID");
