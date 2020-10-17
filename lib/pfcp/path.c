@@ -262,8 +262,6 @@ void ogs_pfcp_up_send_association_setup_response(ogs_pfcp_xact_t *xact,
 
 void ogs_pfcp_send_g_pdu(ogs_pfcp_pdr_t *pdr, ogs_pkbuf_t *sendbuf)
 {
-    uint8_t qfi;
-
     ogs_gtp_node_t *gnode = NULL;
     ogs_pfcp_far_t *far = NULL;
 
@@ -281,20 +279,15 @@ void ogs_pfcp_send_g_pdu(ogs_pfcp_pdr_t *pdr, ogs_pkbuf_t *sendbuf)
     ogs_assert(gnode);
     ogs_assert(gnode->sock);
 
-    qfi = 0;
-    if (pdr->qer && pdr->qer->qfi)
-        qfi = pdr->qer->qfi;
-
     ogs_gtp_send_user_plane(
             gnode, OGS_GTPU_MSGTYPE_GPDU,
-            qfi, OGS_GTPU_FLAGS_V|OGS_GTPU_FLAGS_PT,
+            (pdr->qer && pdr->qer->qfi) ? pdr->qer->qfi : 0,
+            OGS_GTPU_FLAGS_V|OGS_GTPU_FLAGS_PT,
             far->outer_header_creation.teid, sendbuf);
 }
 
 void ogs_pfcp_send_end_marker(ogs_pfcp_pdr_t *pdr)
 {
-    uint8_t qfi;
-
     ogs_gtp_node_t *gnode = NULL;
     ogs_pfcp_far_t *far = NULL;
 
@@ -318,13 +311,10 @@ void ogs_pfcp_send_end_marker(ogs_pfcp_pdr_t *pdr)
     ogs_assert(sendbuf);
     ogs_pkbuf_reserve(sendbuf, OGS_GTPV1U_5GC_HEADER_LEN);
 
-    qfi = 0;
-    if (pdr->qer && pdr->qer->qfi)
-        qfi = pdr->qer->qfi;
-
     ogs_gtp_send_user_plane(
             gnode, OGS_GTPU_MSGTYPE_END_MARKER,
-            qfi, OGS_GTPU_FLAGS_V|OGS_GTPU_FLAGS_PT,
+            (pdr->qer && pdr->qer->qfi) ? pdr->qer->qfi : 0,
+            OGS_GTPU_FLAGS_V|OGS_GTPU_FLAGS_PT,
             far->outer_header_creation.teid, sendbuf);
 }
 
