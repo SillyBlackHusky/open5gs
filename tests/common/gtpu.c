@@ -100,11 +100,12 @@ void test_gtpu_close(ogs_socknode_t *node)
 int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
         uint8_t type, uint8_t flags, ogs_pkbuf_t *pkbuf)
 {
-    ssize_t sent;
+    ogs_gtp_node_t gnode;
+    int rv;
+
     uint8_t ext_hlen = 0;
 
     test_sess_t *sess = NULL;
-    ogs_sockaddr_t upf;
 
     ogs_gtp_header_t *gtp_h = NULL;
     ogs_gtp_extension_header_t *ext_h = NULL;
@@ -115,8 +116,9 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
     sess = bearer->sess;
     ogs_assert(sess);
 
-    memset(&upf, 0, sizeof(ogs_sockaddr_t));
-    upf.ogs_sin_port = htobe16(OGS_GTPV1_U_UDP_PORT);
+    memset(&gnode, 0, sizeof(ogs_gtp_node_t));
+    gnode.addr.ogs_sin_port = htobe16(OGS_GTPV1_U_UDP_PORT);
+    gnode.sock = node->sock;
 
     gtp_h = (ogs_gtp_header_t *)pkbuf->data;
 
@@ -141,8 +143,8 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
             OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
 
         if (sess->upf_n3_ip.ipv4) {
-            upf.ogs_sa_family = AF_INET;
-            upf.sin.sin_addr.s_addr = sess->upf_n3_ip.addr;
+            gnode.addr.ogs_sa_family = AF_INET;
+            gnode.addr.sin.sin_addr.s_addr = sess->upf_n3_ip.addr;
         } else {
             ogs_fatal("Not implemented");
             ogs_assert_if_reached();
@@ -154,8 +156,8 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
         gtp_h->teid = htobe32(bearer->sgw_s1u_teid);
 
         if (bearer->sgw_s1u_ip.ipv4) {
-            upf.ogs_sa_family = AF_INET;
-            upf.sin.sin_addr.s_addr = bearer->sgw_s1u_ip.addr;
+            gnode.addr.ogs_sa_family = AF_INET;
+            gnode.addr.sin.sin_addr.s_addr = bearer->sgw_s1u_ip.addr;
         } else {
             ogs_fatal("Not implemented");
             ogs_assert_if_reached();
@@ -165,15 +167,10 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
         ogs_assert_if_reached();
     }
 
-    ogs_assert(node);
-    ogs_assert(node->sock);
-
-    sent = ogs_sendto(node->sock->fd, pkbuf->data, pkbuf->len, 0, &upf);
+    rv = ogs_gtp_sendto(&gnode, pkbuf);
     ogs_pkbuf_free(pkbuf);
-    if (sent < 0 || sent != pkbuf->len)
-        return OGS_ERROR;
 
-    return OGS_OK;
+    return rv;
 }
 
 int test_gtpu_send_ping(
