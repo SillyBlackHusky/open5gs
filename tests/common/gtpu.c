@@ -100,82 +100,6 @@ void test_gtpu_close(ogs_socknode_t *node)
 int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
         uint8_t type, uint8_t flags, ogs_pkbuf_t *pkbuf)
 {
-    ogs_gtp_node_t gnode;
-    int rv;
-
-    uint8_t ext_hlen = 0;
-
-    test_sess_t *sess = NULL;
-
-    ogs_gtp_header_t *gtp_h = NULL;
-    ogs_gtp_extension_header_t *ext_h = NULL;
-
-    ogs_assert(pkbuf);
-
-    ogs_assert(bearer);
-    sess = bearer->sess;
-    ogs_assert(sess);
-
-    memset(&gnode, 0, sizeof(ogs_gtp_node_t));
-    gnode.addr.ogs_sin_port = htobe16(OGS_GTPV1_U_UDP_PORT);
-    gnode.sock = node->sock;
-
-    gtp_h = (ogs_gtp_header_t *)pkbuf->data;
-
-    gtp_h->type = type;
-    gtp_h->length = htobe16(pkbuf->len - OGS_GTPV1U_HEADER_LEN);
-
-    if (bearer->qfi) {
-        ext_hlen = 1;
-
-        /* 5G Core */
-        gtp_h->flags = (OGS_GTPU_FLAGS_E | flags);
-        gtp_h->teid = htobe32(sess->upf_n3_teid);
-
-        ext_h = (ogs_gtp_extension_header_t *)
-            (pkbuf->data + OGS_GTPV1U_HEADER_LEN);
-        ext_h->type = OGS_GTP_EXTENSION_HEADER_TYPE_PDU_SESSION_CONTAINER;
-        ext_h->len = ext_hlen;
-        ext_h->pdu_type =
-            OGS_GTP_EXTENSION_HEADER_PDU_TYPE_UL_PDU_SESSION_INFORMATION;
-        ext_h->qos_flow_identifier = bearer->qfi;
-        ext_h->next_type =
-            OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
-
-        if (sess->upf_n3_ip.ipv4) {
-            gnode.addr.ogs_sa_family = AF_INET;
-            gnode.addr.sin.sin_addr.s_addr = sess->upf_n3_ip.addr;
-        } else {
-            ogs_fatal("Not implemented");
-            ogs_assert_if_reached();
-        }
-
-    } else if (bearer->ebi) {
-        /* EPC */
-        gtp_h->flags = flags;
-        gtp_h->teid = htobe32(bearer->sgw_s1u_teid);
-
-        if (bearer->sgw_s1u_ip.ipv4) {
-            gnode.addr.ogs_sa_family = AF_INET;
-            gnode.addr.sin.sin_addr.s_addr = bearer->sgw_s1u_ip.addr;
-        } else {
-            ogs_fatal("Not implemented");
-            ogs_assert_if_reached();
-        }
-    } else {
-        ogs_fatal("No QFI[%d] and EBI[%d]", bearer->qfi, bearer->ebi);
-        ogs_assert_if_reached();
-    }
-
-    rv = ogs_gtp_sendto(&gnode, pkbuf);
-    ogs_pkbuf_free(pkbuf);
-
-    return rv;
-}
-
-int test_gtpu_send2(ogs_socknode_t *node, test_bearer_t *bearer,
-        uint8_t type, uint8_t flags, ogs_pkbuf_t *pkbuf)
-{
     int rv;
 
     uint32_t teid;
@@ -321,7 +245,7 @@ int test_gtpu_send_ping(
     }
 
 
-    return test_gtpu_send2(node, bearer,
+    return test_gtpu_send(node, bearer,
             OGS_GTPU_MSGTYPE_GPDU,
             OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT, pkbuf);
 }
@@ -333,67 +257,27 @@ int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
     uint16_t gtp_hlen = 0;
     uint8_t ext_hlen = 0;
 
-    unsigned char *ip_h = NULL;
-
     const char *payload =
         "6000000000083aff fe80000000000000 0000000000000002"
         "ff02000000000000 0000000000000002 85007d3500000000";
     unsigned char tmp[OGS_MAX_SDU_LEN];
+    int payload_len = 48;
 
     ogs_assert(bearer);
 
     pkbuf = ogs_pkbuf_alloc(
             NULL, 200 /* enough for ICMP; use smaller buffer */);
     ogs_assert(pkbuf);
-    ogs_pkbuf_put(pkbuf, 200);
+    ogs_pkbuf_reserve(pkbuf, OGS_GTPV1U_5GC_HEADER_LEN);
+    ogs_pkbuf_put(pkbuf, 200-OGS_GTPV1U_5GC_HEADER_LEN);
     memset(pkbuf->data, 0, pkbuf->len);
 
-    if (bearer->qfi) ext_hlen = 1;
-
-    if (bearer->qfi) {
-        gtp_hlen = 52 + OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4;
-
-        ip_h = (pkbuf->data +
-                OGS_GTPV1U_HEADER_LEN + 4 +
-                OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4);
-    } else {
-        gtp_hlen = 52;
-
-        ip_h = (pkbuf->data + OGS_GTPV1U_HEADER_LEN + 4);
-    }
-
     OGS_HEX(payload, strlen(payload), tmp);
-    memcpy(ip_h, tmp, 48);
+    memcpy(pkbuf->data, tmp, payload_len);
 
-    ogs_pkbuf_trim(pkbuf, gtp_hlen + OGS_GTPV1U_HEADER_LEN);
+    ogs_pkbuf_trim(pkbuf, payload_len);
 
     return test_gtpu_send(node, bearer,
             OGS_GTPU_MSGTYPE_GPDU,
-            OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT | OGS_GTPU_FLAGS_S, pkbuf);
-}
-
-int test_gtpu_send_err_ind(ogs_socknode_t *node, test_bearer_t *bearer)
-{
-    ogs_pkbuf_t *pkbuf = NULL;
-
-    uint16_t gtp_hlen = 0;
-    uint8_t ext_hlen = 0;
-
-    ogs_assert(bearer);
-
-    pkbuf = ogs_gtp_build_err_ind();
-
-    if (bearer->qfi) ext_hlen = 1;
-
-    if (bearer->qfi) {
-        gtp_hlen = OGS_GTPV1U_EXTENSION_HEADER_LEN + ext_hlen * 4;
-    } else {
-        gtp_hlen = 0;
-    }
-
-    ogs_pkbuf_trim(pkbuf, gtp_hlen + OGS_GTPV1U_HEADER_LEN);
-
-    return test_gtpu_send(node, bearer,
-            OGS_GTPU_MSGTYPE_ERR_IND,
             OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT | OGS_GTPU_FLAGS_S, pkbuf);
 }

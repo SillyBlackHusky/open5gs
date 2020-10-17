@@ -158,7 +158,12 @@ int ogs_gtp_send_user_plane(
 
     } else {
         /* EPC */
-        ogs_assert(ogs_pkbuf_push(pkbuf, OGS_GTPV1U_HEADER_LEN));
+        if (flags & (OGS_GTPU_FLAGS_S|OGS_GTPU_FLAGS_PN|OGS_GTPU_FLAGS_E)) {
+            ogs_assert(ogs_pkbuf_push(pkbuf,
+                OGS_GTPV1U_HEADER_LEN+OGS_GTPV1U_EXTENSION_HEADER_LEN));
+        } else {
+            ogs_assert(ogs_pkbuf_push(pkbuf, OGS_GTPV1U_HEADER_LEN));
+        }
         gtp_h = (ogs_gtp_header_t *)pkbuf->data;
 
         gtp_h->flags = flags;
