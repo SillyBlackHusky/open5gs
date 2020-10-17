@@ -32,7 +32,7 @@ ogs_pkbuf_t *test_gtpu_read(ogs_socknode_t *node);
 void test_gtpu_close(ogs_socknode_t *node);
 
 int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
-        uint8_t type, int flags, ogs_pkbuf_t *pkbuf);
+        uint8_t type, uint8_t flags, ogs_pkbuf_t *pkbuf);
 int test_gtpu_send_ping(
         ogs_socknode_t *node, test_bearer_t *bearer, const char *dst_ip);
 int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer);

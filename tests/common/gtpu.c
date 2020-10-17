@@ -98,7 +98,7 @@ void test_gtpu_close(ogs_socknode_t *node)
 #endif
 
 int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
-        uint8_t type, int flags, ogs_pkbuf_t *pkbuf)
+        uint8_t type, uint8_t flags, ogs_pkbuf_t *pkbuf)
 {
     ssize_t sent;
     uint8_t ext_hlen = 0;
@@ -150,7 +150,7 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
 
     } else if (bearer->ebi) {
         /* EPC */
-        gtp_h->flags = OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT | flags;
+        gtp_h->flags = flags;
         gtp_h->teid = htobe32(bearer->sgw_s1u_teid);
 
         if (bearer->sgw_s1u_ip.ipv4) {
