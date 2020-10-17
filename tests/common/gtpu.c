@@ -254,9 +254,6 @@ int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
 {
     ogs_pkbuf_t *pkbuf = NULL;
 
-    uint16_t gtp_hlen = 0;
-    uint8_t ext_hlen = 0;
-
     const char *payload =
         "6000000000083aff fe80000000000000 0000000000000002"
         "ff02000000000000 0000000000000002 85007d3500000000";
@@ -279,5 +276,27 @@ int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
 
     return test_gtpu_send(node, bearer,
             OGS_GTPU_MSGTYPE_GPDU,
+            OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT | OGS_GTPU_FLAGS_S, pkbuf);
+}
+
+int test_gtpu_send_error_indication(
+        ogs_socknode_t *node, test_bearer_t *bearer)
+{
+    int rv;
+    ogs_pkbuf_t *pkbuf = NULL;
+    ogs_sockaddr_t *addr = NULL;
+
+    ogs_assert(bearer);
+
+    rv = ogs_getaddrinfo(&addr, AF_UNSPEC, "127.0.0.1", 0, AI_PASSIVE);
+    ogs_assert(rv == OGS_OK);
+
+    pkbuf = ogs_gtp_build_error_indication(3, addr);
+    ogs_assert(pkbuf);
+
+    ogs_freeaddrinfo(addr);
+
+    return test_gtpu_send(node, bearer,
+            OGS_GTPU_MSGTYPE_ERR_IND,
             OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT | OGS_GTPU_FLAGS_S, pkbuf);
 }
