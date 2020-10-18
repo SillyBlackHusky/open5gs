@@ -1057,6 +1057,12 @@ static void test3_func(abts_case *tc, void *data)
     ABTS_PTR_NOTNULL(tc, recvbuf);
     ogs_pkbuf_free(recvbuf);
 
+    /* Send Error Indication */
+    rv = test_gtpu_send_error_indication(gtpu, bearer);
+    ABTS_INT_EQUAL(tc, OGS_OK, rv);
+
+    ogs_msleep(300);
+
     /* Send UE Context Release Request */
     sendbuf = test_s1ap_build_ue_context_release_request(test_ue,
             S1AP_Cause_PR_radioNetwork, S1AP_CauseRadioNetwork_user_inactivity);
