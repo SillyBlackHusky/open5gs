@@ -170,8 +170,34 @@ int ogs_gtp_send_user_plane(
     }
 
     gtp_h->type = type;
+
+    /*
+     * TS29.281 5.1 General format in GTP-U header
+     *
+     * Length: This field indicates the length in octets of the payload,
+     * i.e. the rest of the packet following the mandatory part of
+     * the GTP header (that is the first 8 octets). The Sequence Number,
+     * the N-PDU Number or any Extension headers shall be considered
+     * to be part of the payload, i.e. included in the length count.
+     */
     gtp_h->length = htobe16(pkbuf->len - OGS_GTPV1U_HEADER_LEN);
-    gtp_h->teid = htobe32(teid);
+
+    if (type == OGS_GTPU_MSGTYPE_ECHO_REQ ||
+        type == OGS_GTPU_MSGTYPE_ECHO_RSP ||
+        type == OGS_GTPU_MSGTYPE_ERR_IND) {
+        /*
+         * TS29.281 5.1 General format in GTP-U header
+         *
+         * - The Echo Request/Response and Supported Extension Headers
+         *   notification messages, where the Tunnel Endpoint Identifier
+         *   shall be set to all zeroes.
+         * - The Error Indication message where the Tunnel Endpoint Identifier
+         *   shall be set to all zeros.
+         */
+        gtp_h->teid = 0;
+    } else {
+        gtp_h->teid = htobe32(teid);
+    }
 
     ogs_debug("SEND GTP-U[%d] to Peer[%s] : TEID[0x%x]",
                 type, OGS_ADDR(&gnode->addr, buf), teid);

@@ -97,6 +97,10 @@ static void _gtpv1_u_recv_cb(short when, ogs_socket_t fd, void *data)
 
     if (gtp_h->type == OGS_GTPU_MSGTYPE_ERR_IND) {
         ogs_warn("[RECV] Error Indication from [%s]", OGS_ADDR(&from, buf));
+        memset(&report, 0, sizeof(report));
+
+        report.type.error_indication_report = 1;
+
         goto cleanup;
     }
 
