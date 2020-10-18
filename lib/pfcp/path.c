@@ -265,6 +265,9 @@ void ogs_pfcp_send_g_pdu(ogs_pfcp_pdr_t *pdr, ogs_pkbuf_t *sendbuf)
     ogs_gtp_node_t *gnode = NULL;
     ogs_pfcp_far_t *far = NULL;
 
+    ogs_gtp_header_t gtp_hdesc;
+    ogs_gtp_extension_header_t ext_hdesc;
+
     ogs_assert(pdr);
     ogs_assert(sendbuf);
 
@@ -279,11 +282,15 @@ void ogs_pfcp_send_g_pdu(ogs_pfcp_pdr_t *pdr, ogs_pkbuf_t *sendbuf)
     ogs_assert(gnode);
     ogs_assert(gnode->sock);
 
-    ogs_gtp_send_user_plane(
-            gnode, OGS_GTPU_MSGTYPE_GPDU,
-            (pdr->qer && pdr->qer->qfi) ? pdr->qer->qfi : 0,
-            OGS_GTPU_FLAGS_V|OGS_GTPU_FLAGS_PT,
-            far->outer_header_creation.teid, sendbuf);
+    memset(&gtp_hdesc, 0, sizeof(gtp_hdesc));
+    memset(&ext_hdesc, 0, sizeof(ext_hdesc));
+
+    gtp_hdesc.type = OGS_GTPU_MSGTYPE_GPDU;
+    gtp_hdesc.teid = far->outer_header_creation.teid;
+    if (pdr->qer && pdr->qer->qfi)
+        ext_hdesc.qos_flow_identifier = pdr->qer->qfi;
+
+    ogs_gtp_send_user_plane(gnode, &gtp_hdesc, &ext_hdesc, sendbuf);
 }
 
 void ogs_pfcp_send_end_marker(ogs_pfcp_pdr_t *pdr)
@@ -292,6 +299,9 @@ void ogs_pfcp_send_end_marker(ogs_pfcp_pdr_t *pdr)
     ogs_pfcp_far_t *far = NULL;
 
     ogs_pkbuf_t *sendbuf = NULL;
+
+    ogs_gtp_header_t gtp_hdesc;
+    ogs_gtp_extension_header_t ext_hdesc;
 
     ogs_assert(pdr);
     far = pdr->far;
@@ -311,11 +321,15 @@ void ogs_pfcp_send_end_marker(ogs_pfcp_pdr_t *pdr)
     ogs_assert(sendbuf);
     ogs_pkbuf_reserve(sendbuf, OGS_GTPV1U_5GC_HEADER_LEN);
 
-    ogs_gtp_send_user_plane(
-            gnode, OGS_GTPU_MSGTYPE_END_MARKER,
-            (pdr->qer && pdr->qer->qfi) ? pdr->qer->qfi : 0,
-            OGS_GTPU_FLAGS_V|OGS_GTPU_FLAGS_PT,
-            far->outer_header_creation.teid, sendbuf);
+    memset(&gtp_hdesc, 0, sizeof(gtp_hdesc));
+    memset(&ext_hdesc, 0, sizeof(ext_hdesc));
+
+    gtp_hdesc.type = OGS_GTPU_MSGTYPE_END_MARKER;
+    gtp_hdesc.teid = far->outer_header_creation.teid;
+    if (pdr->qer && pdr->qer->qfi)
+        ext_hdesc.qos_flow_identifier = pdr->qer->qfi;
+
+    ogs_gtp_send_user_plane(gnode, &gtp_hdesc, &ext_hdesc, sendbuf);
 }
 
 void ogs_pfcp_send_buffered_packet(ogs_pfcp_pdr_t *pdr)

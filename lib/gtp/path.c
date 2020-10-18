@@ -124,8 +124,8 @@ int ogs_gtp_sendto(ogs_gtp_node_t *gnode, ogs_pkbuf_t *pkbuf)
 }
 
 int ogs_gtp_send_user_plane(
-        ogs_gtp_node_t *gnode, uint8_t type,
-        uint8_t qfi, uint8_t flags, uint32_t teid,
+        ogs_gtp_node_t *gnode,
+        ogs_gtp_header_t *gtp_hdesc, ogs_gtp_extension_header_t *ext_hdesc,
         ogs_pkbuf_t *pkbuf)
 {
     char buf[OGS_ADDRSTRLEN];
@@ -133,43 +133,50 @@ int ogs_gtp_send_user_plane(
 
     ogs_gtp_header_t *gtp_h = NULL;
     ogs_gtp_extension_header_t *ext_h = NULL;
+    uint8_t flags;
 
     ogs_assert(gnode);
-    ogs_assert(type);
-    ogs_assert(flags);
+    ogs_assert(gtp_hdesc);
+    ogs_assert(ext_hdesc);
     ogs_assert(pkbuf);
 
-    if (qfi) {
-        /* 5G Core */
+    /* Processing GTP Flags */
+    flags = gtp_hdesc->flags;
+    flags |= OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT;
+    if (gtp_hdesc->type == OGS_GTPU_MSGTYPE_ERR_IND) flags |= OGS_GTPU_FLAGS_S;
+    if (ext_hdesc->qos_flow_identifier) flags |= OGS_GTPU_FLAGS_E;
+
+    /* Define GTP Header Size */
+    if (ext_hdesc->qos_flow_identifier) {
         ogs_assert(ogs_pkbuf_push(pkbuf, OGS_GTPV1U_5GC_HEADER_LEN));
-        gtp_h = (ogs_gtp_header_t *)pkbuf->data;
-
-        gtp_h->flags = (OGS_GTPU_FLAGS_E | flags);
-
-        ext_h = (ogs_gtp_extension_header_t *)
-            (pkbuf->data + OGS_GTPV1U_HEADER_LEN);
-        ext_h->type = OGS_GTP_EXTENSION_HEADER_TYPE_PDU_SESSION_CONTAINER;
-        ext_h->len = 1;
-        ext_h->pdu_type =
-            OGS_GTP_EXTENSION_HEADER_PDU_TYPE_UL_PDU_SESSION_INFORMATION;
-        ext_h->qos_flow_identifier = qfi;
-        ext_h->next_type =
-            OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
-
+    } else if (flags & (OGS_GTPU_FLAGS_S|OGS_GTPU_FLAGS_PN|OGS_GTPU_FLAGS_E)) {
+        ogs_assert(ogs_pkbuf_push(pkbuf,
+            OGS_GTPV1U_HEADER_LEN+OGS_GTPV1U_EXTENSION_HEADER_LEN));
     } else {
-        /* EPC */
-        if (flags & (OGS_GTPU_FLAGS_S|OGS_GTPU_FLAGS_PN|OGS_GTPU_FLAGS_E)) {
-            ogs_assert(ogs_pkbuf_push(pkbuf,
-                OGS_GTPV1U_HEADER_LEN+OGS_GTPV1U_EXTENSION_HEADER_LEN));
-        } else {
-            ogs_assert(ogs_pkbuf_push(pkbuf, OGS_GTPV1U_HEADER_LEN));
-        }
-        gtp_h = (ogs_gtp_header_t *)pkbuf->data;
-
-        gtp_h->flags = flags;
+        ogs_assert(ogs_pkbuf_push(pkbuf, OGS_GTPV1U_HEADER_LEN));
     }
+    gtp_h = (ogs_gtp_header_t *)pkbuf->data;
 
-    gtp_h->type = type;
+    /* Fill GTP Header */
+    gtp_h->flags = flags;
+    gtp_h->type = gtp_hdesc->type;
+
+    if (gtp_h->type == OGS_GTPU_MSGTYPE_ECHO_REQ ||
+        gtp_h->type == OGS_GTPU_MSGTYPE_ECHO_RSP ||
+        gtp_h->type == OGS_GTPU_MSGTYPE_ERR_IND) {
+        /*
+         * TS29.281 5.1 General format in GTP-U header
+         *
+         * - The Echo Request/Response and Supported Extension Headers
+         *   notification messages, where the Tunnel Endpoint Identifier
+         *   shall be set to all zeroes.
+         * - The Error Indication message where the Tunnel Endpoint Identifier
+         *   shall be set to all zeros.
+         */
+        gtp_h->teid = 0;
+    } else {
+        gtp_h->teid = htobe32(gtp_hdesc->teid);
+    }
 
     /*
      * TS29.281 5.1 General format in GTP-U header
@@ -182,30 +189,37 @@ int ogs_gtp_send_user_plane(
      */
     gtp_h->length = htobe16(pkbuf->len - OGS_GTPV1U_HEADER_LEN);
 
-    if (type == OGS_GTPU_MSGTYPE_ECHO_REQ ||
-        type == OGS_GTPU_MSGTYPE_ECHO_RSP ||
-        type == OGS_GTPU_MSGTYPE_ERR_IND) {
-        /*
-         * TS29.281 5.1 General format in GTP-U header
-         *
-         * - The Echo Request/Response and Supported Extension Headers
-         *   notification messages, where the Tunnel Endpoint Identifier
-         *   shall be set to all zeroes.
-         * - The Error Indication message where the Tunnel Endpoint Identifier
-         *   shall be set to all zeros.
-         */
-        gtp_h->teid = 0;
-    } else {
-        gtp_h->teid = htobe32(teid);
+    /* Fill Extention Header */
+    if (gtp_h->flags & OGS_GTPU_FLAGS_E) {
+        ext_h = (ogs_gtp_extension_header_t *)
+            (pkbuf->data + OGS_GTPV1U_HEADER_LEN);
+        if (ext_hdesc->qos_flow_identifier) {
+            /* 5G Core */
+            ext_h->type = OGS_GTP_EXTENSION_HEADER_TYPE_PDU_SESSION_CONTAINER;
+            ext_h->len = 1;
+            ext_h->pdu_type =
+                OGS_GTP_EXTENSION_HEADER_PDU_TYPE_UL_PDU_SESSION_INFORMATION;
+            ext_h->qos_flow_identifier = ext_hdesc->qos_flow_identifier;
+            ext_h->next_type =
+                OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
+        } else {
+            /* EPC */
+            ext_h->type = 0x40;
+            ext_h->len = 1;
+            ext_h->next_type =
+                OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
+        }
     }
 
     ogs_debug("SEND GTP-U[%d] to Peer[%s] : TEID[0x%x]",
-                type, OGS_ADDR(&gnode->addr, buf), teid);
+            gtp_hdesc->type, OGS_ADDR(&gnode->addr, buf),
+            be32toh(gtp_h->teid));
     rv = ogs_gtp_sendto(gnode, pkbuf);
     if (rv != OGS_OK) {
         if (ogs_socket_errno != OGS_EAGAIN) {
             ogs_error("SEND GTP-U[%d] to Peer[%s] : TEID[0x%x]",
-                        type, OGS_ADDR(&gnode->addr, buf), teid);
+                gtp_hdesc->type, OGS_ADDR(&gnode->addr, buf),
+                be32toh(gtp_h->teid));
         }
     }
 

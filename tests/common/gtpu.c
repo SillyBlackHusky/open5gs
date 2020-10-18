@@ -107,6 +107,9 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
 
     test_sess_t *sess = NULL;
 
+    ogs_gtp_header_t gtp_hdesc;
+    ogs_gtp_extension_header_t ext_hdesc;
+
     ogs_assert(pkbuf);
 
     ogs_assert(bearer);
@@ -146,8 +149,15 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
         ogs_assert_if_reached();
     }
 
-    return ogs_gtp_send_user_plane(
-            &gnode, type, qfi, flags, teid, pkbuf);
+    memset(&gtp_hdesc, 0, sizeof(gtp_hdesc));
+    memset(&ext_hdesc, 0, sizeof(ext_hdesc));
+
+    gtp_hdesc.type = type;
+    gtp_hdesc.teid = teid;
+    gtp_hdesc.flags = flags;
+    ext_hdesc.qos_flow_identifier = qfi;
+
+    return ogs_gtp_send_user_plane(&gnode, &gtp_hdesc, &ext_hdesc, pkbuf);
 }
 
 int test_gtpu_send_ping(
@@ -243,9 +253,7 @@ int test_gtpu_send_ping(
     }
 
 
-    return test_gtpu_send(node, bearer,
-            OGS_GTPU_MSGTYPE_GPDU,
-            OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT, pkbuf);
+    return test_gtpu_send(node, bearer, OGS_GTPU_MSGTYPE_GPDU, 0, pkbuf);
 }
 
 int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
@@ -273,8 +281,7 @@ int test_gtpu_send_slacc_rs(ogs_socknode_t *node, test_bearer_t *bearer)
     ogs_pkbuf_trim(pkbuf, payload_len);
 
     return test_gtpu_send(node, bearer,
-            OGS_GTPU_MSGTYPE_GPDU,
-            OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT | OGS_GTPU_FLAGS_S, pkbuf);
+            OGS_GTPU_MSGTYPE_GPDU, OGS_GTPU_FLAGS_S, pkbuf);
 }
 
 int test_gtpu_send_error_indication(
@@ -308,6 +315,5 @@ int test_gtpu_send_error_indication(
     ogs_assert(pkbuf);
 
     return test_gtpu_send(node, bearer,
-            OGS_GTPU_MSGTYPE_ERR_IND,
-            OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT | OGS_GTPU_FLAGS_S, pkbuf);
+            OGS_GTPU_MSGTYPE_ERR_IND, OGS_GTPU_FLAGS_S, pkbuf);
 }

@@ -37,8 +37,8 @@ int ogs_gtp_send(ogs_gtp_node_t *gnode, ogs_pkbuf_t *pkbuf);
 int ogs_gtp_sendto(ogs_gtp_node_t *gnode, ogs_pkbuf_t *pkbuf);
 
 int ogs_gtp_send_user_plane(
-        ogs_gtp_node_t *gnode, uint8_t type,
-        uint8_t qfi, uint8_t flags, uint32_t teid,
+        ogs_gtp_node_t *gnode,
+        ogs_gtp_header_t *gtp_hdesc, ogs_gtp_extension_header_t *ext_hdesc,
         ogs_pkbuf_t *pkbuf);
 
 ogs_pkbuf_t *ogs_gtp_handle_echo_req(ogs_pkbuf_t *pkt);
