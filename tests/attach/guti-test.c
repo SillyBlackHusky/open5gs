@@ -274,12 +274,6 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_PTR_NOTNULL(tc, recvbuf);
     tests1ap_recv(test_ue, recvbuf);
 
-#if 0
-    rv = test_gtpu_send_error_indication(gtpu, bearer);
-    ABTS_INT_EQUAL(tc, OGS_OK, rv);
-#endif
-
-#if 1
     /* Send GTP-U Router Solicitation */
     rv = test_gtpu_send_slacc_rs(gtpu, bearer);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -509,7 +503,6 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_PTR_NOTNULL(tc, sendbuf);
     rv = testenb_s1ap_send(s1ap, sendbuf);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
-#endif
 
     ogs_msleep(300);
 

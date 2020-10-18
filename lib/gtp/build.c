@@ -61,12 +61,8 @@ ogs_pkbuf_t *ogs_gtp_build_error_indication(
         uint32_t teid, ogs_sockaddr_t *addr)
 {
     ogs_pkbuf_t *pkbuf = NULL;
-    int family;
-    uint16_t len;
-
     unsigned char *p = NULL;
-    uint16_t uint16 = 0;
-    uint32_t uint32 = 0;
+    int family;
 
     ogs_assert(addr);
 
@@ -74,9 +70,6 @@ ogs_pkbuf_t *ogs_gtp_build_error_indication(
             NULL, 100 /* enough for Error Indiciation; use smaller buffer */);
     ogs_assert(pkbuf);
     ogs_pkbuf_reserve(pkbuf, OGS_GTPV1U_5GC_HEADER_LEN);
-    ogs_pkbuf_put(pkbuf, 100-OGS_GTPV1U_5GC_HEADER_LEN);
-
-    p = pkbuf->data;
 
     /*
      * 8.3 Tunnel Endpoint Identifier Data I
@@ -84,11 +77,8 @@ ogs_pkbuf_t *ogs_gtp_build_error_indication(
      * Octet 1 : Type = 16 (Decimal)
      * Octet 2-5 : Tunnel Endpoint Identitifer Data I
      */
-    *p++ = 16;
-
-    uint32 = htobe32(teid);
-    memcpy(p, &uint32, sizeof(uint32));
-    p += sizeof(uint32);
+    ogs_pkbuf_put_u8(pkbuf, 16);
+    ogs_pkbuf_put_u32(pkbuf, teid);
 
     /*
      * 8.4 GTP-U Peer Address
@@ -97,30 +87,25 @@ ogs_pkbuf_t *ogs_gtp_build_error_indication(
      * Octet 2-3 : Length
      * Octet 4-n : IPv4 or IPv6 Address
      */
-    *p++ = 133;
+    ogs_pkbuf_put_u8(pkbuf, 133);
 
     family = addr->ogs_sa_family;
     switch(family) {
     case AF_INET:
-        len = OGS_IPV4_LEN;
+        ogs_pkbuf_put_u16(pkbuf, OGS_IPV4_LEN);
+        p = ogs_pkbuf_put(pkbuf, OGS_IPV4_LEN);
+        memcpy(p, &addr->sin.sin_addr, OGS_IPV4_LEN);
         break;
     case AF_INET6:
-        len = OGS_IPV6_LEN;
+        ogs_pkbuf_put_u16(pkbuf, OGS_IPV6_LEN);
+        p = ogs_pkbuf_put(pkbuf, OGS_IPV6_LEN);
+        memcpy(p, &addr->sin6.sin6_addr, OGS_IPV6_LEN);
         break;
     default:
         ogs_fatal("Unknown family(%d)", family);
         ogs_abort();
         return NULL;
     }
-
-    uint16 = htobe16(len);
-    memcpy(p, &uint16, sizeof(uint16));
-    p += sizeof(uint16);
-
-    memcpy(p, &addr->sa, len);
-    p += len;
-
-    ogs_pkbuf_trim(pkbuf, p - pkbuf->data);
 
     return pkbuf;
 }
