@@ -130,7 +130,7 @@ static void _gtpv1_u_recv_cb(short when, ogs_socket_t fd, void *data)
         ogs_pfcp_up_handle_error_indication(pkbuf, &report);
 
         if (report.type.error_indication_report) {
-            ogs_fatal("TODO: error_indication");
+            ogs_warn("Error Indication");
         }
 
     } else if (gtp_h->type == OGS_GTPU_MSGTYPE_GPDU) {
