@@ -134,6 +134,7 @@ int ogs_gtp_send_user_plane(
     ogs_gtp_header_t *gtp_h = NULL;
     ogs_gtp_extension_header_t *ext_h = NULL;
     uint8_t flags;
+    uint8_t gtp_hlen = 0;
 
     ogs_assert(gnode);
     ogs_assert(gtp_hdesc);
@@ -143,22 +144,22 @@ int ogs_gtp_send_user_plane(
     /* Processing GTP Flags */
     flags = gtp_hdesc->flags;
     flags |= OGS_GTPU_FLAGS_V | OGS_GTPU_FLAGS_PT;
-    if (gtp_hdesc->type == OGS_GTPU_MSGTYPE_ERR_IND) flags |= OGS_GTPU_FLAGS_S;
     if (ext_hdesc->qos_flow_identifier) flags |= OGS_GTPU_FLAGS_E;
 
     /* Define GTP Header Size */
-    if (ext_hdesc->qos_flow_identifier) {
-        ogs_assert(ogs_pkbuf_push(pkbuf, OGS_GTPV1U_5GC_HEADER_LEN));
-    } else if (flags & (OGS_GTPU_FLAGS_S|OGS_GTPU_FLAGS_PN|OGS_GTPU_FLAGS_E)) {
-        ogs_assert(ogs_pkbuf_push(pkbuf,
-            OGS_GTPV1U_HEADER_LEN+OGS_GTPV1U_EXTENSION_HEADER_LEN));
-    } else {
-        ogs_assert(ogs_pkbuf_push(pkbuf, OGS_GTPV1U_HEADER_LEN));
-    }
+    if (flags & OGS_GTPU_FLAGS_E)
+        gtp_hlen = OGS_GTPV1U_HEADER_LEN+8;
+    else if (flags & (OGS_GTPU_FLAGS_S|OGS_GTPU_FLAGS_PN))
+        gtp_hlen = OGS_GTPV1U_HEADER_LEN+4;
+    else
+        gtp_hlen = OGS_GTPV1U_HEADER_LEN;
+
+    ogs_pkbuf_push(pkbuf, gtp_hlen);
 
     /* Fill GTP Header */
     gtp_h = (ogs_gtp_header_t *)pkbuf->data;
     ogs_assert(gtp_h);
+    memset(gtp_h, 0, gtp_hlen);
 
     gtp_h->flags = flags;
     gtp_h->type = gtp_hdesc->type;

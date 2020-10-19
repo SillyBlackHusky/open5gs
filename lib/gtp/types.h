@@ -51,6 +51,7 @@ extern "C" {
 
 #define OGS_GTPV1U_EXTENSION_HEADER_LEN 4
 typedef struct ogs_gtp_extension_header_s {
+#define OGS_GTP_EXTENSION_HEADER_TYPE_UDP_PORT 0x40
 #define OGS_GTP_EXTENSION_HEADER_TYPE_PDU_SESSION_CONTAINER 0x85
 #define OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS 0x0
     uint16_t sequence_number;

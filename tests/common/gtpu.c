@@ -347,7 +347,8 @@ int test_gtpu_send_error_indication(
     memset(&ext_hdesc, 0, sizeof(ext_hdesc));
 
     gtp_hdesc.type = OGS_GTPU_MSGTYPE_ERR_IND;
-    gtp_hdesc.flags = OGS_GTPU_FLAGS_S;
+    gtp_hdesc.flags = OGS_GTPU_FLAGS_S|OGS_GTPU_FLAGS_E;
+    ext_hdesc.type = OGS_GTP_EXTENSION_HEADER_TYPE_UDP_PORT;
 
     return test_gtpu_send(node, bearer, &gtp_hdesc, &ext_hdesc, pkbuf);
 }
