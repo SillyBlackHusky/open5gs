@@ -100,9 +100,6 @@ void test_gtpu_close(ogs_socknode_t *node)
 int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
         uint8_t type, uint8_t flags, ogs_pkbuf_t *pkbuf)
 {
-    uint32_t teid;
-    uint8_t qfi;
-
     ogs_gtp_node_t gnode;
 
     test_sess_t *sess = NULL;
@@ -116,13 +113,20 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
     sess = bearer->sess;
     ogs_assert(sess);
 
+    memset(&gtp_hdesc, 0, sizeof(gtp_hdesc));
+    memset(&ext_hdesc, 0, sizeof(ext_hdesc));
+
+    gtp_hdesc.type = type;
+    gtp_hdesc.flags = flags;
+
     memset(&gnode, 0, sizeof(ogs_gtp_node_t));
+
     gnode.addr.ogs_sin_port = htobe16(OGS_GTPV1_U_UDP_PORT);
     gnode.sock = node->sock;
 
     if (bearer->qfi) {
-        qfi = bearer->qfi;
-        teid = sess->upf_n3_teid;
+        gtp_hdesc.teid = sess->upf_n3_teid;
+        ext_hdesc.qos_flow_identifier = bearer->qfi;
 
         if (sess->upf_n3_ip.ipv4) {
             gnode.addr.ogs_sa_family = AF_INET;
@@ -133,9 +137,7 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
         }
 
     } else if (bearer->ebi) {
-        /* EPC */
-        qfi = 0;
-        teid = bearer->sgw_s1u_teid;
+        gtp_hdesc.teid = bearer->sgw_s1u_teid;
 
         if (bearer->sgw_s1u_ip.ipv4) {
             gnode.addr.ogs_sa_family = AF_INET;
@@ -148,14 +150,6 @@ int test_gtpu_send(ogs_socknode_t *node, test_bearer_t *bearer,
         ogs_fatal("No QFI[%d] and EBI[%d]", bearer->qfi, bearer->ebi);
         ogs_assert_if_reached();
     }
-
-    memset(&gtp_hdesc, 0, sizeof(gtp_hdesc));
-    memset(&ext_hdesc, 0, sizeof(ext_hdesc));
-
-    gtp_hdesc.type = type;
-    gtp_hdesc.teid = teid;
-    gtp_hdesc.flags = flags;
-    ext_hdesc.qos_flow_identifier = qfi;
 
     return ogs_gtp_send_user_plane(&gnode, &gtp_hdesc, &ext_hdesc, pkbuf);
 }
