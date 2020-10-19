@@ -155,9 +155,11 @@ int ogs_gtp_send_user_plane(
     } else {
         ogs_assert(ogs_pkbuf_push(pkbuf, OGS_GTPV1U_HEADER_LEN));
     }
-    gtp_h = (ogs_gtp_header_t *)pkbuf->data;
 
     /* Fill GTP Header */
+    gtp_h = (ogs_gtp_header_t *)pkbuf->data;
+    ogs_assert(gtp_h);
+
     gtp_h->flags = flags;
     gtp_h->type = gtp_hdesc->type;
 
@@ -173,10 +175,10 @@ int ogs_gtp_send_user_plane(
          * - The Error Indication message where the Tunnel Endpoint Identifier
          *   shall be set to all zeros.
          */
-        gtp_h->teid = 0;
-    } else {
-        gtp_h->teid = htobe32(gtp_hdesc->teid);
+        ogs_assert(gtp_hdesc->teid == 0);
     }
+
+    gtp_h->teid = htobe32(gtp_hdesc->teid);
 
     /*
      * TS29.281 5.1 General format in GTP-U header
@@ -193,6 +195,8 @@ int ogs_gtp_send_user_plane(
     if (gtp_h->flags & OGS_GTPU_FLAGS_E) {
         ext_h = (ogs_gtp_extension_header_t *)
             (pkbuf->data + OGS_GTPV1U_HEADER_LEN);
+        ogs_assert(ext_h);
+
         if (ext_hdesc->qos_flow_identifier) {
             /* 5G Core */
             ext_h->type = OGS_GTP_EXTENSION_HEADER_TYPE_PDU_SESSION_CONTAINER;
@@ -204,7 +208,7 @@ int ogs_gtp_send_user_plane(
                 OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
         } else {
             /* EPC */
-            ext_h->type = 0x40;
+            ext_h->type = ext_hdesc->type;
             ext_h->len = 1;
             ext_h->next_type =
                 OGS_GTP_EXTENSION_HEADER_TYPE_NO_MORE_EXTENSION_HEADERS;
@@ -212,14 +216,12 @@ int ogs_gtp_send_user_plane(
     }
 
     ogs_debug("SEND GTP-U[%d] to Peer[%s] : TEID[0x%x]",
-            gtp_hdesc->type, OGS_ADDR(&gnode->addr, buf),
-            be32toh(gtp_h->teid));
+            gtp_hdesc->type, OGS_ADDR(&gnode->addr, buf), gtp_hdesc->teid);
     rv = ogs_gtp_sendto(gnode, pkbuf);
     if (rv != OGS_OK) {
         if (ogs_socket_errno != OGS_EAGAIN) {
             ogs_error("SEND GTP-U[%d] to Peer[%s] : TEID[0x%x]",
-                gtp_hdesc->type, OGS_ADDR(&gnode->addr, buf),
-                be32toh(gtp_h->teid));
+                gtp_hdesc->type, OGS_ADDR(&gnode->addr, buf), gtp_hdesc->teid);
         }
     }
 
