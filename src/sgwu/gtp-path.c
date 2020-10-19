@@ -34,6 +34,7 @@ static void _gtpv1_u_recv_cb(short when, ogs_socket_t fd, void *data)
     ogs_sockaddr_t from;
 
     ogs_gtp_header_t *gtp_h = NULL;
+    ogs_pfcp_user_plane_report_t report;
 
     uint32_t teid;
     uint8_t qfi;
@@ -126,11 +127,15 @@ static void _gtpv1_u_recv_cb(short when, ogs_socket_t fd, void *data)
         /* Nothing */
 
     } else if (gtp_h->type == OGS_GTPU_MSGTYPE_ERR_IND) {
+        ogs_pfcp_up_handle_error_indication(pkbuf, &report);
+
+        if (report.type.error_indication_report) {
+            ogs_fatal("TODO: error_indication");
+        }
 
     } else if (gtp_h->type == OGS_GTPU_MSGTYPE_GPDU) {
         struct ip *ip_h = NULL;
         ogs_pfcp_pdr_t *pdr = NULL;
-        ogs_pfcp_user_plane_report_t report;
 
         ip_h = (struct ip *)pkbuf->data;
         ogs_assert(ip_h);

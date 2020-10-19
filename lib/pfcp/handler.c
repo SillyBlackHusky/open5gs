@@ -172,6 +172,70 @@ void ogs_pfcp_up_handle_pdr(
     }
 }
 
+void ogs_pfcp_up_handle_error_indication(
+        ogs_pkbuf_t *recvbuf, ogs_pfcp_user_plane_report_t *report)
+{
+    uint32_t teid;
+    uint16_t len;
+    unsigned char *p = NULL;
+
+    ogs_assert(recvbuf);
+    ogs_assert(report);
+
+    p = recvbuf->data;
+    ogs_assert(p);
+
+    memset(report, 0, sizeof(*report));
+
+    /*
+     * 8.3 Tunnel Endpoint Identifier Data I
+     *
+     * Octet 1 : Type = 16 (Decimal)
+     * Octet 2-5 : Tunnel Endpoint Identitifer Data I
+     */
+    if (*p != 16) {
+        ogs_error("Unknown Type [%d]", *p);
+        return;
+    }
+    p += 1;
+
+    memcpy(&teid, p, 4);
+    teid = be32toh(teid);
+    p += 4;
+
+    /*
+     * 8.4 GTP-U Peer Address
+     *
+     * Octet 1 : Type = 133 (Decimal)
+     * Octet 2-3 : Length
+     * Octet 4-n : IPv4 or IPv6 Address
+     */
+    if (*p != 133) {
+        ogs_error("Unknown Type [%d]", *p);
+        return;
+    }
+    p += 1;
+
+    memcpy(&len, p, 2);
+    len = be16toh(len);
+    p += 2;
+
+    report->error_indication.remote_f_teid_len = 5 + len;
+    report->error_indication.remote_f_teid.teid = teid;
+    if (len == OGS_IPV4_LEN) {
+        report->error_indication.remote_f_teid.ipv4 = 1;
+        memcpy(&report->error_indication.remote_f_teid.addr, p, len);
+    } else if (len == OGS_IPV6_LEN) {
+        report->error_indication.remote_f_teid.ipv6 = 1;
+        memcpy(report->error_indication.remote_f_teid.addr6, p, len);
+    } else {
+        ogs_error("Invalid Length [%d]", len);
+        return;
+    }
+
+    report->type.error_indication_report = 1;
+}
+
 ogs_pfcp_pdr_t *ogs_pfcp_handle_create_pdr(ogs_pfcp_sess_t *sess,
         ogs_pfcp_tlv_create_pdr_t *message,
         uint8_t *cause_value, uint8_t *offending_ie_value)
