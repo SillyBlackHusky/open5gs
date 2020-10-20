@@ -630,6 +630,15 @@ ogs_pkbuf_t *ogs_pfcp_build_session_report_request(
         }
     }
 
+    if (report->error_indication.remote_f_teid_len) {
+        req->error_indication_report.presence = 1;
+        req->error_indication_report.remote_f_teid.presence = 1;
+        req->error_indication_report.remote_f_teid.data =
+            &report->error_indication.remote_f_teid;
+        req->error_indication_report.remote_f_teid.len =
+            report->error_indication.remote_f_teid_len;
+    }
+
     pfcp_message.h.type = type;
     return ogs_pfcp_build_msg(&pfcp_message);
 }

@@ -913,6 +913,10 @@ void sgwc_sxa_handle_session_report_request(
                     }
                 }
             }
+        } else if (report_type.error_indication_report) {
+            sgwc_pfcp_send_session_report_response(
+                    pfcp_xact, sess, OGS_PFCP_CAUSE_REQUEST_ACCEPTED);
+            return;
         }
     }
 
@@ -920,5 +924,4 @@ void sgwc_sxa_handle_session_report_request(
     ogs_pfcp_send_error_message(pfcp_xact, 0,
             OGS_PFCP_SESSION_REPORT_RESPONSE_TYPE,
             OGS_PFCP_CAUSE_SESSION_CONTEXT_NOT_FOUND, 0);
-
 }

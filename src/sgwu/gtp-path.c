@@ -30,6 +30,8 @@ static void _gtpv1_u_recv_cb(short when, ogs_socket_t fd, void *data)
     ssize_t size;
     char buf[OGS_ADDRSTRLEN];
 
+    sgwu_sess_t *sess = NULL;
+
     ogs_pkbuf_t *pkbuf = NULL;
     ogs_sockaddr_t from;
 
@@ -127,12 +129,24 @@ static void _gtpv1_u_recv_cb(short when, ogs_socket_t fd, void *data)
         /* Nothing */
 
     } else if (gtp_h->type == OGS_GTPU_MSGTYPE_ERR_IND) {
-        ogs_pfcp_up_handle_error_indication(pkbuf, &report);
+        ogs_pfcp_far_t *far = NULL;
 
-        if (report.type.error_indication_report) {
-            ogs_warn("Error Indication");
+        far = ogs_pfcp_far_find_by_error_indication(pkbuf);
+        if (far) {
+            ogs_pfcp_up_handle_error_indication(far, &report);
+
+            if (report.type.error_indication_report) {
+                ogs_assert(far->sess);
+                sess = SGWU_SESS(far->sess);
+                ogs_assert(sess);
+
+                sgwu_pfcp_send_session_report_request(sess, &report);
+            }
+
+        } else {
+            ogs_error("[DROP] Cannot decode Error Indication");
+            ogs_log_hexdump(OGS_LOG_ERROR, pkbuf->data, pkbuf->len);
         }
-
     } else if (gtp_h->type == OGS_GTPU_MSGTYPE_GPDU) {
         struct ip *ip_h = NULL;
         ogs_pfcp_pdr_t *pdr = NULL;
@@ -145,8 +159,6 @@ static void _gtpv1_u_recv_cb(short when, ogs_socket_t fd, void *data)
             ogs_pfcp_up_handle_pdr(pdr, pkbuf, &report);
 
             if (report.type.downlink_data_report) {
-                sgwu_sess_t *sess = NULL;
-
                 ogs_assert(pdr->sess);
                 sess = SGWU_SESS(pdr->sess);
                 ogs_assert(sess);

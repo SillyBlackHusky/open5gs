@@ -1064,6 +1064,67 @@ void ogs_pfcp_far_hash_set(ogs_pfcp_far_t *far)
             &far->hashkey, far->hashkey_len, far);
 }
 
+ogs_pfcp_far_t *ogs_pfcp_far_find_by_error_indication(ogs_pkbuf_t *pkbuf)
+{
+    ogs_pfcp_far_hashkey_t hashkey;
+    int hashkey_len;
+
+    uint32_t teid;
+    uint16_t len;
+    unsigned char *p = NULL;
+
+    ogs_assert(pkbuf);
+
+    p = pkbuf->data;
+    ogs_assert(p);
+
+    /*
+     * 8.3 Tunnel Endpoint Identifier Data I
+     *
+     * Octet 1 : Type = 16 (Decimal)
+     * Octet 2-5 : Tunnel Endpoint Identitifer Data I
+     */
+    if (*p != 16) {
+        ogs_error("Unknown Type [%d]", *p);
+        return NULL;
+    }
+    p += 1;
+
+    memcpy(&teid, p, 4);
+    teid = be32toh(teid);
+    p += 4;
+
+    /*
+     * 8.4 GTP-U Peer Address
+     *
+     * Octet 1 : Type = 133 (Decimal)
+     * Octet 2-3 : Length
+     * Octet 4-n : IPv4 or IPv6 Address
+     */
+    if (*p != 133) {
+        ogs_error("Unknown Type [%d]", *p);
+        return NULL;
+    }
+    p += 1;
+
+    memcpy(&len, p, 2);
+    len = be16toh(len);
+    p += 2;
+
+    if (len == OGS_IPV4_LEN) {
+    } else if (len == OGS_IPV6_LEN) {
+    } else {
+        ogs_error("Invalid Length [%d]", len);
+        return NULL;
+    }
+
+    hashkey.teid = teid;
+    memcpy(hashkey.addr, p, len);
+    hashkey_len = 4 + len;
+
+    return (ogs_pfcp_far_t *)ogs_hash_get(self.far_hash, &hashkey, hashkey_len);
+}
+
 void ogs_pfcp_far_remove(ogs_pfcp_far_t *far)
 {
     int i;

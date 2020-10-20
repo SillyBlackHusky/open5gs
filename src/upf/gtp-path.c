@@ -186,11 +186,7 @@ static void _gtpv1_u_recv_cb(short when, ogs_socket_t fd, void *data)
         /* Nothing */
 
     } else if (gtp_h->type == OGS_GTPU_MSGTYPE_ERR_IND) {
-        ogs_pfcp_up_handle_error_indication(pkbuf, &report);
-
-        if (report.type.error_indication_report) {
-            ogs_warn("Error Indication");
-        }
+        /* TODO */
 
     } else if (gtp_h->type == OGS_GTPU_MSGTYPE_GPDU) {
         int rv;
